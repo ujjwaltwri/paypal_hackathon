@@ -4,7 +4,7 @@ import { PayPalAgentToolkit } from "@paypal/agent-toolkit/ai-sdk";
 import type { Dispute } from "../types";
 import { demoTracking, storePolicies, demoMerchantRecords } from "../data/seed";
 import { findMerchantRecord, customerHistory, store } from "../data/store";
-import { factsSchema, scoreFacts } from "./rubric";
+import { factsSchema, scoreFacts, type Facts } from "./rubric";
 import { hasPayPalCreds } from "../paypal/rest";
 
 /**
@@ -130,8 +130,42 @@ export function buildTools(dispute: Dispute) {
     score_dispute: tool({
       description:
         "Score the merchant's chance of winning with a deterministic rubric and compute the expected money kept for each option (fight / partial refund / accept). Call this once after gathering evidence, passing only facts you verified from the other tools.",
-      parameters: factsSchema,
-      execute: async (facts) => scoreFacts(facts, dispute.stage),
+      // Deliberately permissive: some open models mangle long described schemas
+      // (e.g. using the field descriptions as keys). We accept loose input and
+      // normalise it ourselves rather than failing the whole investigation.
+      parameters: factsSchema.partial().passthrough(),
+      execute: async (raw) => scoreFacts(normaliseFacts(raw as Record<string, unknown>, dispute), dispute.stage),
     }),
+  };
+}
+
+/** Map whatever the model sent onto the rubric's fields, tolerating mangled keys. */
+export function normaliseFacts(raw: Record<string, unknown>, dispute: Dispute): Facts {
+  const shape = factsSchema.shape as Record<string, { description?: string }>;
+  const fields = Object.keys(shape);
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw ?? {})) {
+    const k = key.trim();
+    const field =
+      fields.find((f) => f === k) ??
+      fields.find((f) => k.endsWith(` ${f}`) || k.startsWith(`${f} `)) ??
+      fields.find((f) => shape[f].description && k.toLowerCase().startsWith(shape[f].description!.toLowerCase()));
+    if (field && out[field] === undefined) out[field] = value;
+  }
+  const bool = (v: unknown) => v === true || v === "true" || v === 1 || v === "yes";
+  const num = (v: unknown, d: number) => (Number.isFinite(Number(v)) && v !== "" && v !== null ? Number(v) : d);
+  return {
+    reason: typeof out.reason === "string" && out.reason ? out.reason : dispute.reason,
+    has_tracking: bool(out.has_tracking),
+    delivered: bool(out.delivered),
+    signature_on_delivery: bool(out.signature_on_delivery),
+    address_matches: bool(out.address_matches),
+    refund_already_issued: bool(out.refund_already_issued),
+    merchant_offered_resolution: bool(out.merchant_offered_resolution),
+    listing_discloses_variation: bool(out.listing_discloses_variation),
+    avs_cvv_match: bool(out.avs_cvv_match),
+    prior_undisputed_orders: Math.max(0, Math.round(num(out.prior_undisputed_orders, 0))),
+    is_separate_transaction: bool(out.is_separate_transaction),
+    amount: num(out.amount, Number(dispute.amount.value)),
   };
 }
