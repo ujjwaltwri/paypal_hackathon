@@ -140,3 +140,14 @@ export async function makeOffer(id: string, note: string, amount: { currency_cod
     body: JSON.stringify({ note: note.slice(0, 2000), offer_amount: amount, offer_type: "REFUND" }),
   });
 }
+
+/**
+ * SANDBOX ONLY: move a dispute from UNDER_REVIEW to WAITING_FOR_SELLER_RESPONSE,
+ * simulating PayPal asking the merchant for evidence. Useful for demos.
+ */
+export async function sandboxRequireSellerEvidence(id: string) {
+  return pp(`/v1/customer/disputes/${encodeURIComponent(id)}/require-evidence`, {
+    method: "POST",
+    body: JSON.stringify({ action: "SELLER_EVIDENCE" }),
+  });
+}

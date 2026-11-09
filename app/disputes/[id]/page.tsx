@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { CaseFile, Dispute, Resolution, TraceEvent } from "@/lib/types";
 import { runAnalysis } from "@/components/run-analysis";
@@ -30,11 +30,13 @@ export default function DisputePage({ params }: { params: Promise<{ id: string }
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [attach, setAttach] = useState("");
+  const dRef = useRef<Dispute | null>(null);
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/disputes/${encodeURIComponent(id)}`);
     const j = await r.json();
     if (!r.ok) return setError(j.error);
+    dRef.current = j.dispute;
     setData(j);
     if (j.caseFile) applyCase(j.caseFile);
   }, [id]);
@@ -42,7 +44,7 @@ export default function DisputePage({ params }: { params: Promise<{ id: string }
   function applyCase(c: CaseFile) {
     setNote(c.responseNote);
     setChoice(c.verdict);
-    setOffer(c.suggestedOfferAmount ?? "");
+    setOffer(c.suggestedOfferAmount ?? (Number(dRef.current?.amount.value ?? 0) * 0.3).toFixed(2));
   }
 
   useEffect(() => {
@@ -344,7 +346,20 @@ function TraceRow({ e }: { e: TraceEvent }) {
   if (e.type === "done") return null;
   if (e.type === "status") return <li className="fade-in pl-6 text-xs text-slate-500">{e.message}</li>;
   if (e.type === "error") return <li className="fade-in rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">{e.message}</li>;
-  if (e.type === "thought") return <li className="fade-in rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">{e.text}</li>;
+  if (e.type === "thought") {
+    const text = e.text.replace(/\*\*|<br\s*\/?>|\|[-\s|]*\|/g, " ").replace(/\s*\|\s*/g, " · ").replace(/\s+/g, " ").trim();
+    if (text.length <= 280) return <li className="fade-in rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">{text}</li>;
+    return (
+      <li className="fade-in">
+        <details className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <summary className="cursor-pointer list-none">
+            <span className="font-medium text-slate-700">Analyst notes</span> · {text.slice(0, 180)}… <span className="text-blue-600">show more</span>
+          </summary>
+          <p className="mt-2 leading-relaxed">{text}</p>
+        </details>
+      </li>
+    );
+  }
   if (e.type === "case")
     return <li className="fade-in pl-6 text-xs font-medium text-emerald-700">✓ Case file ready</li>;
   return (

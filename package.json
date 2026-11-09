@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start -p ${PORT:-3000}",
     "lint": "next lint",
-    "check:paypal": "tsx --env-file=.env.local scripts/check-paypal.ts"
+    "check:paypal": "tsx --env-file=.env.local scripts/check-paypal.ts",
+    "sandbox:require-evidence": "tsx --env-file=.env.local scripts/require-evidence.ts"
   },
   "engines": {
     "node": ">=20"
