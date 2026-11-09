@@ -9,10 +9,10 @@ import {
   themeQuartz,
   type ColDef,
   type ICellRendererParams,
-  type RowClassParams,
 } from "ag-grid-community";
-import { VerdictBadge, SourceBadge, WinMeter } from "@/components/Badges";
-import { dueLabel, hoursLeft, money, reasonLabel, RESOLUTION_LABEL } from "@/components/format";
+import { Avatar, ReasonIcon, SourceTag, StatusTag, VerdictTag, WinBar } from "@/components/Badges";
+import Link from "next/link";
+import { dueLabel, hoursLeft, money, reasonLabel, shortDate } from "@/components/format";
 import { runAnalysis } from "@/components/run-analysis";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -37,15 +37,21 @@ type Row = {
 const theme = themeQuartz.withParams({
   fontFamily: "Inter, system-ui, sans-serif",
   fontSize: 13,
-  headerFontSize: 11,
-  headerFontWeight: 600,
-  headerTextColor: "#64748b",
-  headerBackgroundColor: "#f8fafc",
-  borderColor: "#e2e8f0",
-  rowHoverColor: "#f1f5ff",
+  headerFontSize: 12,
+  headerFontWeight: 500,
+  headerTextColor: "#667085",
+  headerBackgroundColor: "#f9fafb",
+  foregroundColor: "#101828",
+  borderColor: "#eaecf0",
+  rowBorder: { color: "#eaecf0" },
+  wrapperBorder: false,
+  wrapperBorderRadius: 0,
+  columnBorder: false,
+  rowHoverColor: "#f9fafb",
   accentColor: "#1d4ed8",
-  wrapperBorderRadius: 12,
-  rowHeight: 48,
+  rowHeight: 64,
+  headerHeight: 40,
+  cellHorizontalPadding: 16,
 });
 
 export default function Dashboard() {
@@ -55,6 +61,8 @@ export default function Dashboard() {
   const [health, setHealth] = useState<{ paypal: any; llm: string | null } | null>(null);
   const [liveError, setLiveError] = useState<string | undefined>();
   const [triageErrors, setTriageErrors] = useState<string[]>([]);
+  const [tab, setTab] = useState<"open" | "responded" | "all">("open");
+  const [query, setQuery] = useState("");
   const [triage, setTriage] = useState<{ running: boolean; current?: string; done: number; total: number }>({
     running: false,
     done: 0,
@@ -97,161 +105,274 @@ export default function Dashboard() {
   const cols = useMemo<ColDef<Row>[]>(
     () => [
       {
-        headerName: "Dispute",
-        field: "id",
-        minWidth: 190,
+        headerName: "Buyer",
+        field: "buyerName",
+        minWidth: 200,
+        getQuickFilterText: (p) => `${p.data?.buyerName ?? ""} ${p.data?.id ?? ""} ${p.data?.itemDescription ?? ""}`,
         cellRenderer: (p: ICellRendererParams<Row>) => (
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-xs text-slate-700">{p.value}</span>
-            <SourceBadge source={p.data!.source} />
+          <div className="flex min-w-0 items-center gap-3">
+            <Avatar name={p.value} />
+            <div className="min-w-0 leading-tight">
+              <div className="truncate font-medium text-ink">{p.value ?? "Unknown buyer"}</div>
+              <div className="mt-0.5 flex items-center gap-1.5 truncate text-[12px] text-muted">
+                {p.data!.id}
+                {p.data!.source !== "demo" && <SourceTag source={p.data!.source} />}
+              </div>
+            </div>
           </div>
         ),
       },
-      { headerName: "Reason", field: "reason", valueFormatter: (p) => reasonLabel(p.value), minWidth: 180 },
-      { headerName: "Buyer", field: "buyerName", minWidth: 140 },
+      {
+        headerName: "Reason",
+        field: "reason",
+        minWidth: 200,
+        getQuickFilterText: (p) => reasonLabel(p.value),
+        cellRenderer: (p: ICellRendererParams<Row>) => (
+          <div className="flex min-w-0 items-center gap-2.5">
+            <ReasonIcon reason={p.value} />
+            <div className="min-w-0 leading-tight">
+              <div className="truncate text-body">{reasonLabel(p.value)}</div>
+              <div className="truncate text-[12px] text-muted">{p.data!.itemDescription ?? ""}</div>
+            </div>
+          </div>
+        ),
+      },
       {
         headerName: "Amount",
         valueGetter: (p) => Number(p.data!.amount.value),
-        valueFormatter: (p) => money(p.value, p.data!.amount.currency_code),
+        width: 110,
+        minWidth: 110,
+        flex: 0,
         type: "rightAligned",
-        minWidth: 115,
+        cellRenderer: (p: ICellRendererParams<Row>) => <span className="num font-medium text-ink">{money(p.value, p.data!.amount.currency_code)}</span>,
       },
-      { headerName: "Stage", field: "stage", minWidth: 115, valueFormatter: (p) => (p.value ?? "").toLowerCase() },
       {
-        headerName: "Deadline",
+        headerName: "Respond by",
         field: "sellerResponseDueDate",
-        minWidth: 120,
+        width: 140,
+        minWidth: 140,
+        flex: 0,
         sort: "asc",
         comparator: (a, b) => new Date(a ?? 0).getTime() - new Date(b ?? 0).getTime(),
         cellRenderer: (p: ICellRendererParams<Row>) => {
           const h = hoursLeft(p.value);
-          const hot = h !== null && h < 96 && !p.data!.resolution;
-          return <span className={hot ? "font-semibold text-rose-600" : "text-slate-600"}>{dueLabel(p.value)}</span>;
+          const urgent = h !== null && h < 96 && !p.data!.resolution;
+          return (
+            <div className="leading-tight">
+              <div className="num text-body">{shortDate(p.value)}</div>
+              <div className={`text-[12px] ${urgent ? "font-medium text-bad" : "text-muted"}`}>{p.data!.resolution ? "Responded" : dueLabel(p.value)}</div>
+            </div>
+          );
         },
       },
       {
-        headerName: "AI verdict",
+        headerName: "Recommendation",
         field: "verdict",
-        minWidth: 140,
+        minWidth: 180,
         cellRenderer: (p: ICellRendererParams<Row>) =>
           triage.current === p.data!.id ? (
-            <span className="text-xs text-blue-600">Analysing…</span>
+            <span className="inline-flex items-center gap-2 text-[13px] text-brand">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand/30 border-t-brand" /> Analyzing
+            </span>
+          ) : p.data!.resolution ? (
+            <StatusTag resolution={p.data!.resolution} />
           ) : (
-            <VerdictBadge verdict={p.value} />
+            <VerdictTag verdict={p.value} />
           ),
       },
-      { headerName: "Win chance", field: "winProbability", minWidth: 140, cellRenderer: (p: ICellRendererParams<Row>) => <WinMeter p={p.value} /> },
       {
-        headerName: "Exp. recovery",
+        headerName: "Win likelihood",
+        field: "winProbability",
+        width: 130,
+        minWidth: 130,
+        flex: 0,
+        cellRenderer: (p: ICellRendererParams<Row>) => <WinBar p={p.value} />,
+      },
+      {
+        headerName: "Expected recovery",
         field: "expectedBest",
-        headerTooltip: "Expected money kept if you follow the AI's recommendation",
-        minWidth: 135,
+        width: 145,
+        minWidth: 145,
+        flex: 0,
         type: "rightAligned",
-        valueFormatter: (p) => (p.value === null ? "—" : money(Math.max(0, p.value), p.data!.amount.currency_code)),
-      },
-      {
-        headerName: "Status",
-        field: "resolution",
-        minWidth: 150,
         cellRenderer: (p: ICellRendererParams<Row>) =>
-          p.value ? (
-            <span className="text-xs font-medium text-emerald-700">✓ {RESOLUTION_LABEL[p.value]}</span>
-          ) : (
-            <span className="text-xs text-slate-500">Needs response</span>
-          ),
+          p.value === null ? <span className="text-subtle">—</span> : <span className="num text-body">{money(Math.max(0, p.value), p.data!.amount.currency_code)}</span>,
       },
     ],
     [triage.current],
   );
 
+  const responded = rows.length - open.length;
+  const shown = rows.filter((r) => (tab === "open" ? !r.resolution : tab === "responded" ? Boolean(r.resolution) : true));
+  const upcoming = [...open]
+    .filter((r) => r.sellerResponseDueDate)
+    .sort((a, b) => new Date(a.sellerResponseDueDate!).getTime() - new Date(b.sellerResponseDueDate!).getTime())
+    .slice(0, 3);
+  const sumBy = (v: string | null) => open.filter((r) => r.verdict === v).reduce((t, r) => t + Number(r.amount.value), 0);
+  const split = [
+    { label: "Submit evidence", value: sumBy("FIGHT"), color: "#12b76a" },
+    { label: "Partial refund", value: sumBy("OFFER_PARTIAL_REFUND"), color: "#f79009" },
+    { label: "Refund", value: sumBy("ACCEPT"), color: "#98a2b3" },
+    { label: "Not analyzed", value: sumBy(null), color: "#eaecf0" },
+  ].filter((x) => x.value > 0);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dispute queue</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Every open PayPal dispute, investigated by an AI analyst. You approve; it submits.
-          </p>
+          <h1 className="text-[26px] font-semibold tracking-tight">Disputes</h1>
+          <p className="mt-1 text-[14px] text-muted">Every open PayPal dispute, investigated and scored so you know which ones are worth fighting.</p>
         </div>
         <div className="flex items-center gap-2">
-          <StatusPill ok={health?.paypal?.authOk} label={health?.paypal?.configured ? (health.paypal.authOk ? "PayPal sandbox connected" : "PayPal auth failed") : "PayPal: demo data only"} />
-          <StatusPill ok={Boolean(health?.llm)} label={health?.llm ?? "No LLM key: rules engine"} />
+          <button
+            className="btn-secondary"
+            onClick={async () => {
+              await fetch("/api/reset", { method: "POST" });
+              load();
+            }}
+          >
+            Reset demo
+          </button>
           <button className="btn-primary" onClick={triageAll} disabled={triage.running || !open.some((r) => !r.verdict)}>
-            {triage.running ? `Triaging ${triage.done}/${triage.total}…` : "Triage all with AI"}
+            {triage.running ? `Analyzing ${Math.min(triage.done + 1, triage.total)} of ${triage.total}` : "Analyze open disputes"}
           </button>
         </div>
       </div>
 
-      {liveError && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-          Couldn&apos;t load sandbox disputes: {liveError}
+      {(liveError || triageErrors.length > 0) && (
+        <div className="space-y-2">
+          {liveError && <Alert>Couldn&apos;t load sandbox disputes from PayPal. {liveError}</Alert>}
+          {triageErrors.length > 0 && (
+            <Alert>
+              {triageErrors.length} {triageErrors.length === 1 ? "dispute was" : "disputes were"} scored by the rules engine because the AI model returned an error.
+              <span className="mt-1 block text-[12px] opacity-80">{triageErrors[0]}</span>
+            </Alert>
+          )}
         </div>
       )}
 
-      {triageErrors.length > 0 && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-800">
-          <div className="font-medium">Some analyses hit errors:</div>
-          <ul className="mt-1 list-disc pl-5 text-xs">
-            {triageErrors.slice(0, 5).map((e, i) => (
-              <li key={i} className="break-all">{e}</li>
-            ))}
-          </ul>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="card p-5">
+          <div className="text-[13px] font-medium text-muted">Amount in dispute</div>
+          <div className="num mt-2 text-[30px] font-semibold tracking-tight">{money(atRisk)}</div>
+          <div className="mt-1 text-[13px] text-muted">
+            Across {open.length} open {open.length === 1 ? "dispute" : "disputes"}
+          </div>
+          {atRisk > 0 && (
+            <>
+              <div className="mt-4 flex h-2 gap-0.5 overflow-hidden rounded-full">
+                {split.map((x) => (
+                  <div key={x.label} style={{ width: `${(x.value / atRisk) * 100}%`, background: x.color }} title={`${x.label}: ${money(x.value)}`} />
+                ))}
+              </div>
+              <ul className="mt-3 space-y-1 text-[12px] text-body">
+                {split.map((x) => (
+                  <li key={x.label} className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-sm" style={{ background: x.color }} />
+                    {x.label}
+                    <span className="num ml-auto text-muted">{money(x.value)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
-      )}
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-        <Kpi label="Open disputes" value={String(open.length)} />
-        <Kpi label="Money at risk" value={money(atRisk)} />
-        <Kpi label="Due within 4 days" value={String(urgent)} tone={urgent ? "rose" : undefined} />
-        <Kpi label="Analysed" value={`${analysed}/${rows.length}`} />
-        <Kpi label="Projected recovery" value={money(projected)} tone="emerald" hint="Expected money kept across open disputes if you follow the AI recommendations" />
+        <div className="card p-5">
+          <div className="flex items-center justify-between">
+            <div className="text-[13px] font-medium text-muted">Next deadlines</div>
+            {urgent > 0 && <span className="text-[12px] font-medium text-bad">{urgent} due within 4 days</span>}
+          </div>
+          {upcoming.length === 0 ? (
+            <p className="mt-6 text-[13px] text-muted">No open disputes. You&apos;re all caught up.</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-line">
+              {upcoming.map((r) => {
+                const h = hoursLeft(r.sellerResponseDueDate);
+                return (
+                  <li key={r.id}>
+                    <Link href={`/disputes/${encodeURIComponent(r.id)}`} className="flex items-center gap-3 py-2.5 hover:opacity-80">
+                      <Avatar name={r.buyerName} size={28} />
+                      <div className="min-w-0 flex-1 leading-tight">
+                        <div className="truncate text-[13px] font-medium">{r.buyerName}</div>
+                        <div className="truncate text-[12px] text-muted">{reasonLabel(r.reason)}</div>
+                      </div>
+                      <div className="text-right leading-tight">
+                        <div className="num text-[13px] font-medium">{money(r.amount.value, r.amount.currency_code)}</div>
+                        <div className={`text-[12px] ${h !== null && h < 96 ? "font-medium text-bad" : "text-muted"}`}>{dueLabel(r.sellerResponseDueDate)}</div>
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="card p-5">
+          <div className="text-[13px] font-medium text-muted">Expected recovery</div>
+          <div className="num mt-2 text-[30px] font-semibold tracking-tight text-ok">{analysed ? money(projected) : "—"}</div>
+          <div className="mt-1 text-[13px] text-muted">If you follow each recommendation, compared with refunding everything.</div>
+          <div className="mt-4">
+            <div className="flex justify-between text-[12px] text-body">
+              <span>Analyzed</span>
+              <span className="num text-muted">
+                {analysed} of {rows.length}
+              </span>
+            </div>
+            <div className="mt-1.5 h-2 rounded-full bg-[#eaecf0]">
+              <div className="h-full rounded-full bg-brand transition-[width] duration-500" style={{ width: `${rows.length ? (analysed / rows.length) * 100 : 0}%` }} />
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="card overflow-hidden" style={{ height: 470 }}>
+      <div className="card overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3.5">
+          <div className="inline-flex rounded-lg border border-[#d0d5dd] p-0.5 text-[13px] font-semibold">
+            {(
+              [
+                ["open", "Needs response", open.length],
+                ["responded", "Responded", responded],
+                ["all", "All", rows.length],
+              ] as const
+            ).map(([key, label, count]) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={`rounded-md px-3 py-1.5 ${tab === key ? "bg-canvas text-ink shadow-[0_1px_2px_rgba(16,24,40,0.06)]" : "text-muted hover:text-ink"}`}
+              >
+                {label}
+                <span className="num ml-1.5 text-muted">{count}</span>
+              </button>
+            ))}
+          </div>
+          <div className="relative w-full sm:w-72">
+            <svg viewBox="0 0 20 20" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <circle cx="9" cy="9" r="5.5" />
+              <path d="m13.5 13.5 3 3" />
+            </svg>
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search buyer, item or dispute ID" className="field pl-9" />
+          </div>
+        </div>
         <AgGridReact<Row>
           theme={theme}
-          rowData={rows}
+          rowData={shown}
           columnDefs={cols}
           loading={loading}
-          defaultColDef={{ sortable: true, resizable: true, filter: true, flex: 1, cellStyle: { display: "flex", alignItems: "center" } }}
+          quickFilterText={query}
+          domLayout="autoHeight"
+          defaultColDef={{ sortable: true, resizable: true, filter: false, flex: 1, suppressMovable: true, cellStyle: { display: "flex", alignItems: "center" } }}
           getRowId={(p) => p.data.id}
           onRowClicked={(e) => router.push(`/disputes/${encodeURIComponent(e.data!.id)}`)}
           rowClass="cursor-pointer"
-          getRowStyle={(p: RowClassParams<Row>) => (p.data?.resolution ? { opacity: 0.55 } : undefined)}
+          overlayNoRowsTemplate="<span style='color:#667085;font-size:13px'>No disputes match.</span>"
         />
       </div>
-      <p className="text-xs text-slate-400">
-        Click a dispute to see the agent&apos;s investigation and approve a response. Demo disputes are simulated; sandbox
-        disputes hit the PayPal Disputes API.{" "}
-        <button
-          className="underline hover:text-slate-600"
-          onClick={async () => {
-            await fetch("/api/reset", { method: "POST" });
-            load();
-          }}
-        >
-          Reset demo
-        </button>
-      </p>
     </div>
   );
 }
 
-function Kpi({ label, value, tone, hint }: { label: string; value: string; tone?: "rose" | "emerald"; hint?: string }) {
-  const color = tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : "text-slate-900";
-  return (
-    <div className="card px-4 py-3.5" title={hint}>
-      <div className="label">{label}</div>
-      <div className={`mt-1 text-2xl font-semibold tabular-nums tracking-tight ${color}`}>{value}</div>
-    </div>
-  );
-}
-
-function StatusPill({ ok, label }: { ok?: boolean; label: string }) {
-  return (
-    <span className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 lg:inline-flex">
-      <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-emerald-500" : "bg-slate-300"}`} />
-      {label}
-    </span>
-  );
+function Alert({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-lg border border-[#fedf89] bg-warn-soft px-4 py-3 text-[13px] text-warn">{children}</div>;
 }

@@ -2,17 +2,31 @@
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --color-ink: #0f172a;
+  --color-ink: #101828;
+  --color-body: #344054;
+  --color-muted: #667085;
+  --color-subtle: #98a2b3;
+  --color-line: #eaecf0;
+  --color-canvas: #f6f7f9;
   --color-brand: #1d4ed8;
-  --color-brand-soft: #eff4ff;
+  --color-brand-dark: #1e40af;
+  --color-brand-soft: #eef3ff;
+  --color-ok: #067647;
+  --color-ok-soft: #ecfdf3;
+  --color-warn: #b54708;
+  --color-warn-soft: #fffaeb;
+  --color-bad: #b42318;
+  --color-bad-soft: #fef3f2;
 }
 
-html, body { background: #f7f8fb; color: var(--color-ink); }
-@utility card { @apply rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]; }
-@utility btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed; }
-@utility btn-primary { @apply btn bg-brand text-white hover:bg-blue-800; }
-@utility btn-ghost { @apply btn border border-slate-200 bg-white text-slate-700 hover:bg-slate-50; }
-@utility btn-danger { @apply btn border border-rose-200 bg-white text-rose-700 hover:bg-rose-50; }
-@utility label { @apply text-[11px] font-semibold uppercase tracking-wider text-slate-500; }
-@keyframes fadein { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
-@utility fade-in { animation: fadein .25s ease-out both; }
+html, body { background: var(--color-canvas); color: var(--color-ink); font-size: 14px; }
+body { font-feature-settings: "cv11" 1, "ss01" 1; }
+.num { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
+
+@utility card { @apply rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(16,24,40,0.05)]; }
+@utility btn { @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3.5 text-[13px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50; }
+@utility btn-primary { @apply btn bg-brand text-white shadow-[0_1px_2px_rgba(16,24,40,0.1)] hover:bg-brand-dark; }
+@utility btn-secondary { @apply btn border border-[#d0d5dd] bg-white text-body shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:bg-canvas; }
+@utility btn-danger { @apply btn bg-bad text-white hover:opacity-90; }
+@utility field { @apply w-full rounded-lg border border-[#d0d5dd] bg-white px-3 py-2 text-[13px] text-ink shadow-[0_1px_2px_rgba(16,24,40,0.05)] outline-none placeholder:text-subtle focus:border-brand focus:ring-4 focus:ring-brand/10; }
