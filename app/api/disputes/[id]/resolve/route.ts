@@ -30,12 +30,34 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     if (live) {
       if (body.action === "FIGHT") {
-        paypalResponse = await paypal.provideEvidence(id, {
-          evidenceType: c?.paypalEvidenceType ?? "OTHER",
-          notes: body.note,
-          trackingInfo: c?.trackingInfo,
-          refundIds: c?.refundIds,
-        });
+        // PayPal only allows certain evidence types per dispute reason/stage.
+        // Try the AI's choice first, then the standard fallbacks.
+        const preferred = c?.paypalEvidenceType ?? "OTHER";
+        const candidates = [
+          preferred,
+          ...(c?.trackingInfo ? ["PROOF_OF_FULFILLMENT"] : []),
+          ...(c?.refundIds?.length ? ["PROOF_OF_REFUND"] : []),
+          "OTHER",
+        ].filter((t, i, a) => a.indexOf(t) === i);
+        let lastErr: unknown;
+        for (const evidenceType of candidates) {
+          try {
+            paypalResponse = await paypal.provideEvidence(id, {
+              evidenceType,
+              notes: body.note,
+              trackingInfo: evidenceType === "PROOF_OF_FULFILLMENT" || evidenceType === preferred ? c?.trackingInfo : undefined,
+              refundIds: evidenceType === "PROOF_OF_REFUND" ? c?.refundIds : undefined,
+            });
+            paypalResponse = { evidenceType, ...(paypalResponse as object) };
+            lastErr = undefined;
+            break;
+          } catch (e) {
+            lastErr = e;
+            if (!/EVIDENCE_TYPE_IS_NOT_ALLOWED|EVIDENCE_TYPE/i.test((e as Error).message)) throw e;
+            console.warn(`[resolve] ${id}: evidence type ${evidenceType} not allowed, trying next`);
+          }
+        }
+        if (lastErr) throw lastErr;
       } else if (body.action === "ACCEPT") {
         paypalResponse = await paypal.acceptClaim(id, body.note);
       } else {

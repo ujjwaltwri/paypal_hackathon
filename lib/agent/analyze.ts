@@ -45,7 +45,9 @@ const caseSchema = z.object({
       "PROOF_OF_RECEIPT_COPY",
       "OTHER",
     ])
-    .describe("Best matching PayPal evidence_type for the submission"),
+    .describe(
+      "Best matching PayPal evidence_type. For item-not-received with tracking use PROOF_OF_FULFILLMENT (mention any signature in the note); for refund-not-processed use PROOF_OF_REFUND.",
+    ),
   trackingInfo: z.object({ carrier: z.string(), trackingNumber: z.string() }).nullable(),
   refundIds: z.array(z.string()).describe("Refund IDs found in merchant records, if any"),
   suggestedOfferAmount: z.string().nullable().describe("For OFFER_PARTIAL_REFUND: amount as decimal string"),
@@ -252,9 +254,7 @@ async function rulesEngine(d: Dispute, emit: Emit): Promise<CaseFile> {
     responseNote,
     paypalEvidenceType: refundIds.length
       ? "PROOF_OF_REFUND"
-      : facts.signature_on_delivery
-        ? "PROOF_OF_DELIVERY_SIGNATURE"
-        : trackingInfo
+      : trackingInfo
           ? "PROOF_OF_FULFILLMENT"
           : "OTHER",
     trackingInfo,
