@@ -45,6 +45,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
     }
   } catch (e) {
+    console.error(`[resolve] ${id} ${body.action} failed:`, (e as Error).message);
     return NextResponse.json({ error: (e as Error).message }, { status: 502 });
   }
 

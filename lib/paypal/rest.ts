@@ -40,7 +40,11 @@ async function pp<T = any>(pathname: string, init: RequestInit = {}): Promise<T>
   const text = await res.text();
   const body = text ? safeJson(text) : {};
   if (!res.ok) {
-    const msg = (body as any)?.message || (body as any)?.details?.[0]?.description || text;
+    const b = body as any;
+    const details = (b?.details ?? [])
+      .map((d: any) => [d.issue, d.field, d.value, d.description].filter(Boolean).join(" | "))
+      .join("; ");
+    const msg = [b?.name, b?.message, details].filter(Boolean).join(" - ") || text;
     throw new Error(`PayPal ${init.method || "GET"} ${pathname} failed (${res.status}): ${msg}`);
   }
   return body as T;
@@ -122,9 +126,21 @@ export async function provideEvidence(
       },
     ],
   };
-  const form = new FormData();
-  form.append("input", new Blob([JSON.stringify(input)], { type: "application/json" }), "input.json");
-  return pp(`/v1/customer/disputes/${encodeURIComponent(id)}/provide-evidence`, { method: "POST", body: form });
+  // Build the multipart body by hand: PayPal wants a plain "input" field with
+  // Content-Type application/json and no filename (FormData+Blob adds one,
+  // which PayPal rejects as MALFORMED_REQUEST).
+  const boundary = `----ccboundary${Date.now().toString(16)}`;
+  const body =
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="input"\r\n` +
+    `Content-Type: application/json\r\n\r\n` +
+    `${JSON.stringify(input)}\r\n` +
+    `--${boundary}--\r\n`;
+  return pp(`/v1/customer/disputes/${encodeURIComponent(id)}/provide-evidence`, {
+    method: "POST",
+    headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
+    body,
+  });
 }
 
 export async function acceptClaim(id: string, note: string) {
