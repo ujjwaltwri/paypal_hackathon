@@ -24,7 +24,7 @@ export function getModel(): { model: LanguageModelV1; label: string } | null {
     return { model: createGoogleGenerativeAI()(id), label: `Google ${id}` };
   }
   if (process.env.GROQ_API_KEY) {
-    const id = override || "llama-3.3-70b-versatile";
+    const id = override || "openai/gpt-oss-120b";
     return { model: createGroq()(id), label: `Groq ${id}` };
   }
   return null;

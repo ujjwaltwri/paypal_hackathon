@@ -52,6 +52,9 @@ const caseSchema = z.object({
   winProbability: z.number().min(0).max(1).describe("Use the score_dispute result unless you have a strong reason"),
 });
 
+// Free-tier LLM keys rate-limit quickly; back off for up to ~1 minute (2s, 4s, 8s, 16s, 32s).
+const MAX_RETRIES = Number(process.env.LLM_MAX_RETRIES || 5);
+
 export type Emit = (e: TraceEvent) => void;
 
 export async function analyzeDispute(dispute: Dispute, emit: Emit): Promise<CaseFile> {
@@ -97,6 +100,7 @@ async function llmAgent(
     tools,
     maxSteps: 10,
     temperature: 0.2,
+    maxRetries: MAX_RETRIES,
     onStepFinish: (step) => {
       if (step.text?.trim()) emit({ type: "thought", text: step.text.trim() });
       for (const r of step.toolResults ?? []) {
@@ -129,6 +133,7 @@ async function llmAgent(
         ? ` The rubric scored this at ${rubric.probability} win probability; expected money kept: ${JSON.stringify(rubric.expectedValues)}; it suggests ${rubric.suggestedVerdict}${rubric.suggestedOfferAmount ? ` with an offer of ${rubric.suggestedOfferAmount}` : ""}. Follow it unless the evidence clearly says otherwise, and explain why.`
         : ""),
     temperature: 0.2,
+    maxRetries: MAX_RETRIES,
   });
 
   const p = rubric?.probability ?? object.winProbability;
