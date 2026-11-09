@@ -22,6 +22,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
         store.putCase(caseFile);
         emit({ type: "case", caseFile });
       } catch (e) {
+        console.error(`[analyze] ${id}:`, (e as Error).message);
         emit({ type: "error", message: (e as Error).message });
       }
       emit({ type: "done" });

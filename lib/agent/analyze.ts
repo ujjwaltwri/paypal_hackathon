@@ -60,6 +60,24 @@ export async function analyzeDispute(dispute: Dispute, emit: Emit): Promise<Case
     emit({ type: "status", message: "No LLM key configured - running the deterministic rules engine." });
     return rulesEngine(dispute, emit);
   }
+  try {
+    return await llmAgent(dispute, emit, llm);
+  } catch (e) {
+    const msg = (e as Error).message;
+    console.error(`[analyze] ${llm.label} failed for ${dispute.id}:`, msg);
+    emit({ type: "error", message: `${llm.label} failed: ${msg}` });
+    if (process.env.FALLBACK_TO_RULES === "false") throw e;
+    emit({ type: "status", message: "Falling back to the deterministic rules engine." });
+    const c = await rulesEngine(dispute, emit);
+    return { ...c, engine: `Rules engine (LLM error)` };
+  }
+}
+
+async function llmAgent(
+  dispute: Dispute,
+  emit: Emit,
+  llm: NonNullable<ReturnType<typeof getModel>>,
+): Promise<CaseFile> {
 
   emit({ type: "status", message: `Investigating with ${llm.label}…` });
   const tools = buildTools(dispute);

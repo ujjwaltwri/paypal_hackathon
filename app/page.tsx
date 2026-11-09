@@ -54,6 +54,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [health, setHealth] = useState<{ paypal: any; llm: string | null } | null>(null);
   const [liveError, setLiveError] = useState<string | undefined>();
+  const [triageErrors, setTriageErrors] = useState<string[]>([]);
   const [triage, setTriage] = useState<{ running: boolean; current?: string; done: number; total: number }>({
     running: false,
     done: 0,
@@ -81,9 +82,12 @@ export default function Dashboard() {
   async function triageAll() {
     const todo = open.filter((r) => !r.verdict);
     setTriage({ running: true, done: 0, total: todo.length });
+    setTriageErrors([]);
     for (const [i, r] of todo.entries()) {
       setTriage((t) => ({ ...t, current: r.id }));
-      await runAnalysis(r.id, () => {});
+      await runAnalysis(r.id, (e) => {
+        if (e.type === "error") setTriageErrors((errs) => [...errs, `${r.id}: ${e.message}`]);
+      }).catch((err) => setTriageErrors((errs) => [...errs, `${r.id}: ${err.message}`]));
       setTriage((t) => ({ ...t, done: i + 1 }));
       await load();
     }
@@ -104,19 +108,19 @@ export default function Dashboard() {
         ),
       },
       { headerName: "Reason", field: "reason", valueFormatter: (p) => reasonLabel(p.value), minWidth: 180 },
-      { headerName: "Buyer", field: "buyerName", minWidth: 130 },
+      { headerName: "Buyer", field: "buyerName", minWidth: 140 },
       {
         headerName: "Amount",
         valueGetter: (p) => Number(p.data!.amount.value),
         valueFormatter: (p) => money(p.value, p.data!.amount.currency_code),
         type: "rightAligned",
-        width: 110,
+        minWidth: 115,
       },
       { headerName: "Stage", field: "stage", minWidth: 115, valueFormatter: (p) => (p.value ?? "").toLowerCase() },
       {
         headerName: "Deadline",
         field: "sellerResponseDueDate",
-        width: 115,
+        minWidth: 120,
         sort: "asc",
         comparator: (a, b) => new Date(a ?? 0).getTime() - new Date(b ?? 0).getTime(),
         cellRenderer: (p: ICellRendererParams<Row>) => {
@@ -141,7 +145,7 @@ export default function Dashboard() {
         headerName: "Exp. recovery",
         field: "expectedBest",
         headerTooltip: "Expected money kept if you follow the AI's recommendation",
-        width: 125,
+        minWidth: 135,
         type: "rightAligned",
         valueFormatter: (p) => (p.value === null ? "—" : money(Math.max(0, p.value), p.data!.amount.currency_code)),
       },
@@ -181,6 +185,17 @@ export default function Dashboard() {
       {liveError && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
           Couldn&apos;t load sandbox disputes: {liveError}
+        </div>
+      )}
+
+      {triageErrors.length > 0 && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-800">
+          <div className="font-medium">Some analyses hit errors:</div>
+          <ul className="mt-1 list-disc pl-5 text-xs">
+            {triageErrors.slice(0, 5).map((e, i) => (
+              <li key={i} className="break-all">{e}</li>
+            ))}
+          </ul>
         </div>
       )}
 
