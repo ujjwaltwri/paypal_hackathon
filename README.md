@@ -102,6 +102,15 @@ npm run dev                    # http://localhost:3000
 
 Push to GitHub, then **New → Blueprint** in Render and select the repo. `render.yaml` sets up the service. Add your keys as environment variables: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, one LLM key (e.g. `GROQ_API_KEY`), and optionally `LLM_MODEL`.
 
+### Keeping the free instance awake
+
+Render's free tier spins a service down after about 15 minutes without traffic, and the next visitor waits roughly a minute for it to start. Two things prevent that:
+
+- **Self-ping (built in):** `instrumentation.ts` pings the app's own `/api/ping` every 10 minutes while it runs, using the `RENDER_EXTERNAL_URL` Render provides. Turn it off with `KEEP_ALIVE=false`.
+- **GitHub Action (backup):** `.github/workflows/keep-alive.yml` pings the app every 10 minutes from GitHub, which also wakes it if it has gone to sleep. Add a repository variable `RENDER_URL` (Settings → Secrets and variables → Actions → Variables) with your Render URL.
+
+A free instance running all month uses about 730 of Render's 750 free instance hours, so keep this to one always-on service.
+
 ## Configuration
 
 | Variable | Purpose |
