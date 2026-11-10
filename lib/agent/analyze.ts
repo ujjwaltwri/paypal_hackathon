@@ -57,8 +57,8 @@ const caseSchema = z.object({
   winProbability: z.number().min(0).max(1).describe("Use the score_dispute result unless you have a strong reason"),
 });
 
-// Free-tier LLM keys rate-limit quickly; back off for up to ~1 minute (2s, 4s, 8s, 16s, 32s).
-const MAX_RETRIES = Number(process.env.LLM_MAX_RETRIES || 5);
+// Free-tier LLM keys rate-limit quickly; back off for up to ~2 minutes (2s, 4s, … 64s).
+const MAX_RETRIES = Number(process.env.LLM_MAX_RETRIES || 6);
 
 export type Emit = (e: TraceEvent) => void;
 
@@ -108,7 +108,7 @@ async function llmAgent(
     system: SYSTEM,
     messages,
     tools,
-    maxSteps: 10,
+    maxSteps: 8,
     temperature: 0.2,
     maxRetries: MAX_RETRIES,
     onStepFinish: (step) => {
@@ -126,7 +126,7 @@ async function llmAgent(
   // tool_use blocks in a request that defines no tools.
   const transcript = run.steps
     .flatMap((st) => [
-      ...(st.toolResults ?? []).map((r: any) => `TOOL ${r.toolName}(${JSON.stringify(r.args)}) ->\n${JSON.stringify(r.result).slice(0, 4000)}`),
+      ...(st.toolResults ?? []).map((r: any) => `TOOL ${r.toolName}(${JSON.stringify(r.args)}) ->\n${JSON.stringify(r.result).slice(0, 1200)}`),
       st.text?.trim() ? `ANALYST NOTE: ${st.text.trim()}` : "",
     ])
     .filter(Boolean)

@@ -50,7 +50,7 @@ function safeParse(s: string) {
 }
 
 /** Keep tool results small so they fit comfortably in the model context. */
-function trim(obj: unknown, max = 6000) {
+function trim(obj: unknown, max = 1500) {
   const s = JSON.stringify(obj);
   if (!s || s.length <= max) return obj;
   return { truncated: true, preview: s.slice(0, max) };
@@ -78,7 +78,7 @@ export function buildTools(dispute: Dispute) {
         "Fetch the full PayPal dispute: reason, amount, lifecycle stage, buyer messages, disputed transaction. Always call this first.",
       parameters: z.object({ dispute_id: z.string() }),
       execute: async ({ dispute_id }) => {
-        if (live) return trim(await callToolkit("get_dispute", { dispute_id }));
+        if (live) return compactDispute(await callToolkit("get_dispute", { dispute_id }));
         const { raw, ...d } = dispute;
         return d;
       },
@@ -107,7 +107,7 @@ export function buildTools(dispute: Dispute) {
       execute: async ({ transaction_id, search_months }) => {
         if (live) {
           try {
-            return trim(await callToolkit("list_transactions", { transaction_id, search_months: search_months ?? 3 }), 4000);
+            return trim(await callToolkit("list_transactions", { transaction_id, search_months: search_months ?? 3 }), 1200);
           } catch (e) {
             return { error: (e as Error).message };
           }
@@ -186,5 +186,29 @@ export function normaliseFacts(raw: Record<string, unknown>, dispute: Dispute): 
     prior_undisputed_orders: Math.max(0, Math.round(num(out.prior_undisputed_orders, 0))),
     is_separate_transaction: bool(out.is_separate_transaction),
     amount: num(out.amount, Number(dispute.amount.value)),
+  };
+}
+
+/**
+ * The raw dispute JSON is large (links, extensions, nested objects) and eats
+ * the token budget on free-tier models. Keep only what matters for the case.
+ */
+function compactDispute(raw: any) {
+  if (!raw || typeof raw !== "object") return trim(raw);
+  const tx = raw.disputed_transactions?.[0] ?? {};
+  return {
+    dispute_id: raw.dispute_id,
+    reason: raw.reason,
+    status: raw.status,
+    stage: raw.dispute_life_cycle_stage,
+    amount: raw.dispute_amount,
+    created: raw.create_time,
+    seller_response_due: raw.seller_response_due_date,
+    seller_transaction_id: tx.seller_transaction_id,
+    buyer: tx.buyer?.name,
+    items: (tx.items ?? []).map((i: any) => i.item_description || i.item_name).filter(Boolean),
+    seller_protection_eligible: tx.seller_protection_eligible,
+    buyer_messages: (raw.messages ?? []).filter((m: any) => m.posted_by === "BUYER").map((m: any) => String(m.content ?? "").slice(0, 400)),
+    buyer_requested_amount: raw.offer?.buyer_requested_amount,
   };
 }
