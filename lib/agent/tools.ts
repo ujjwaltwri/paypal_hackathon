@@ -130,7 +130,13 @@ export function buildTools(dispute: Dispute) {
         const attached = store.notes(dispute.id);
         if (!rec && !attached.length)
           return { found: false, note: "No internal records found for this order. Ask the merchant to attach order details." };
-        return { found: Boolean(rec), record: rec, merchantAttachedNotes: attached, customerHistory: customerHistory(rec?.customerEmail) };
+        return {
+          found: true,
+          // Notes the merchant pasted for this dispute are their own order records and count as evidence.
+          merchantAttachedRecords: attached,
+          orderRecord: rec ?? null,
+          customerHistory: rec ? customerHistory(rec.customerEmail) : undefined,
+        };
       },
     }),
 

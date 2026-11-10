@@ -4,6 +4,7 @@ import type { CaseFile, Dispute, TraceEvent, Verdict } from "../types";
 import { buildTools } from "./tools";
 import { getModel } from "./model";
 import { expectedValues, scoreFacts, type Facts } from "./rubric";
+import { store } from "../data/store";
 
 const SYSTEM = `You are Chargeback Copilot, a disputes analyst working for a small online merchant that takes payments through PayPal.
 Your job: investigate one PayPal dispute and recommend the option that leaves the merchant best off - FIGHT (submit evidence), OFFER_PARTIAL_REFUND, or ACCEPT (refund the buyer).
@@ -13,6 +14,8 @@ How to work:
 2. Gather evidence: get_shipment_tracking, search_merchant_records, and get_store_policies. Use list_buyer_transactions for duplicate or unauthorised claims.
 3. Call score_dispute exactly once with only facts you verified from tool results. Never invent facts.
 4. Then write a short final note on what you found.
+
+Records the merchant attached to the dispute (tracking numbers, delivery confirmations, listing text, messages) are the merchant's own records and count as verified evidence, the same as a carrier API result.
 
 Be honest with the merchant. If the evidence is weak or the amount is too small to be worth their time, recommend accepting or a partial refund. Never fabricate tracking numbers, refund IDs or messages.`;
 
@@ -88,10 +91,15 @@ async function llmAgent(
   const tools = buildTools(dispute);
   let rubric: ReturnType<typeof scoreFacts> | undefined;
 
+  const attachedNotes = store.notes(dispute.id);
   const messages: CoreMessage[] = [
     {
       role: "user",
-      content: `Investigate PayPal dispute ${dispute.id} (reason ${dispute.reason}, ${dispute.amount.value} ${dispute.amount.currency_code}, stage ${dispute.stage}, transaction ${dispute.transactionId ?? "unknown"}, buyer ${dispute.buyerEmail ?? "unknown"}).`,
+      content:
+        `Investigate PayPal dispute ${dispute.id} (reason ${dispute.reason}, ${dispute.amount.value} ${dispute.amount.currency_code}, stage ${dispute.stage}, transaction ${dispute.transactionId ?? "unknown"}, buyer ${dispute.buyerEmail ?? "unknown"}).` +
+        (attachedNotes.length
+          ? `\n\nThe merchant attached these records for this order:\n${attachedNotes.map((n) => `- ${n}`).join("\n")}`
+          : ""),
     },
   ];
 
@@ -187,10 +195,10 @@ async function rulesEngine(d: Dispute, emit: Emit): Promise<CaseFile> {
   const tracking: any = d.transactionId ? await call("get_shipment_tracking", { transaction_id: d.transactionId }) : {};
   const records: any = await call("search_merchant_records", { transaction_id: d.transactionId, buyer_email: d.buyerEmail });
   await call("get_store_policies", {});
-  const rec = records.record;
+  const rec = records.orderRecord;
   const notes: string[] = rec?.notes ?? [];
   // Merchant-attached records (pasted in the UI) are free text: pull out what we can.
-  const attached: string = (records.merchantAttachedNotes ?? []).join(" \n ");
+  const attached: string = (records.merchantAttachedRecords ?? []).join(" \n ");
   const all = `${notes.join(" ")} ${attached}`;
   const priorMatch = all.match(/(\d+) prior orders/i);
   const noteTracking = attached.match(/\b(UPS|USPS|FedEx|DHL)\b[^\n]*?\b(1Z[0-9A-Z]{8,}|\d{10,22})\b/i);
