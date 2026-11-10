@@ -67,9 +67,10 @@ export type TraceEvent =
 
 export type Resolution = {
   disputeId: string;
-  action: "EVIDENCE_SUBMITTED" | "CLAIM_ACCEPTED" | "OFFER_MADE";
+  action: "EVIDENCE_SUBMITTED" | "CLAIM_ACCEPTED" | "OFFER_MADE" | "RESPONDED_IN_PAYPAL";
   at: string;
   note: string;
   paypalResponse?: unknown;
   mode: "paypal-sandbox" | "demo";
 };
+

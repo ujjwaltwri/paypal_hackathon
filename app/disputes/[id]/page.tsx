@@ -269,7 +269,11 @@ export default function DisputePage({ params }: { params: Promise<{ id: string }
                       <div className="font-semibold">{RESOLUTION_LABEL[resolution.action]}</div>
                       <div className="mt-0.5">
                         {new Date(resolution.at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}.{" "}
-                        {resolution.mode === "demo" ? "Simulated because this is a demo dispute." : "Sent to the PayPal sandbox."}
+                        {resolution.action === "RESPONDED_IN_PAYPAL"
+                          ? "PayPal shows this dispute waiting on the buyer, so it can't be answered again."
+                          : resolution.mode === "demo"
+                            ? "Simulated because this is a demo dispute."
+                            : "Sent to the PayPal sandbox."}
                       </div>
                     </div>
                   </div>

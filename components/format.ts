@@ -38,6 +38,7 @@ export const RESOLUTION_LABEL: Record<string, string> = {
   EVIDENCE_SUBMITTED: "Evidence submitted",
   CLAIM_ACCEPTED: "Refunded",
   OFFER_MADE: "Offer sent",
+  RESPONDED_IN_PAYPAL: "Responded",
 };
 export const stageLabel = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replaceAll("_", " ");
 

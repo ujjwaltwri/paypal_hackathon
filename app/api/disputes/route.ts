@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
-import { listAllDisputes } from "@/lib/disputes";
+import { effectiveResolution, listAllDisputes } from "@/lib/disputes";
 import { store } from "@/lib/data/store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const { disputes, liveError, live } = await listAllDisputes();
-  const rows = disputes.map(({ raw, ...d }) => {
+  const rows = disputes.map((full) => {
+    const { raw, ...d } = full;
     const c = store.getCase(d.id);
-    const r = store.getResolution(d.id);
+    const r = effectiveResolution(full, store.getResolution(d.id));
     return {
       ...d,
       verdict: c?.verdict ?? null,
