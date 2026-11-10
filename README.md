@@ -4,7 +4,7 @@
 
 > Built for the PayPal AI Hackathon (Nov 2026).
 >
-> **Live demo:** _add Render URL_ · **Video:** _add YouTube link_
+> **Live demo:** https://chargeback-copilot-osgv.onrender.com · **Video:** https://youtu.be/WejSOfb9SeQ
 
 ## The problem
 
