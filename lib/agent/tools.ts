@@ -56,6 +56,19 @@ function trim(obj: unknown, max = 6000) {
   return { truncated: true, preview: s.slice(0, max) };
 }
 
+/**
+ * Every field optional and nullable, extra keys allowed. Groq validates tool
+ * arguments against the schema server-side and rejects e.g. `null` for a
+ * boolean, which would abort the whole investigation.
+ */
+const looseFactsSchema = z
+  .object(
+    Object.fromEntries(
+      Object.entries(factsSchema.shape).map(([k, v]) => [k, (v as z.ZodTypeAny).nullable().optional()]),
+    ) as { [K in keyof typeof factsSchema.shape]: z.ZodOptional<z.ZodNullable<(typeof factsSchema.shape)[K]>> },
+  )
+  .passthrough();
+
 export function buildTools(dispute: Dispute) {
   const live = dispute.source === "paypal-sandbox" && hasPayPalCreds();
 
@@ -133,7 +146,7 @@ export function buildTools(dispute: Dispute) {
       // Deliberately permissive: some open models mangle long described schemas
       // (e.g. using the field descriptions as keys). We accept loose input and
       // normalise it ourselves rather than failing the whole investigation.
-      parameters: factsSchema.partial().passthrough(),
+      parameters: looseFactsSchema,
       execute: async (raw) => scoreFacts(normaliseFacts(raw as Record<string, unknown>, dispute), dispute.stage),
     }),
   };

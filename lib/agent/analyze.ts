@@ -189,31 +189,40 @@ async function rulesEngine(d: Dispute, emit: Emit): Promise<CaseFile> {
   await call("get_store_policies", {});
   const rec = records.record;
   const notes: string[] = rec?.notes ?? [];
-  const priorMatch = notes.join(" ").match(/(\d+) prior orders/i);
+  // Merchant-attached records (pasted in the UI) are free text: pull out what we can.
+  const attached: string = (records.merchantAttachedNotes ?? []).join(" \n ");
+  const all = `${notes.join(" ")} ${attached}`;
+  const priorMatch = all.match(/(\d+) prior orders/i);
+  const noteTracking = attached.match(/\b(UPS|USPS|FedEx|DHL)\b[^\n]*?\b(1Z[0-9A-Z]{8,}|\d{10,22})\b/i);
+  const noteDelivered = /\bdelivered\b/i.test(attached);
+  const noteSigned = /\bsign(ed|ature)\b/i.test(attached);
+  const noteRefund = attached.match(/refund(?: id)?[:\s]+([0-9A-Z]{12,})/i);
 
   const facts: Facts = {
     reason: d.reason,
-    has_tracking: Boolean(tracking?.tracking_number),
-    delivered: tracking?.status === "DELIVERED",
-    signature_on_delivery: Boolean(tracking?.signature_on_delivery),
-    address_matches: Boolean(tracking?.shipping_address_matches_paypal),
-    refund_already_issued: Boolean(rec?.refunds?.some((r: any) => r.status === "COMPLETED")),
-    merchant_offered_resolution: Boolean(
-      rec?.supportThread?.some((m: any) => m.from === "merchant" && /refund|return|exchange/i.test(m.text)),
-    ),
-    listing_discloses_variation: Boolean(rec?.productListing?.disclaimer),
+    has_tracking: Boolean(tracking?.tracking_number) || Boolean(noteTracking),
+    delivered: tracking?.status === "DELIVERED" || noteDelivered,
+    signature_on_delivery: Boolean(tracking?.signature_on_delivery) || noteSigned,
+    address_matches: Boolean(tracking?.shipping_address_matches_paypal) || /address on the paypal|paypal (shipping )?address/i.test(attached),
+    refund_already_issued: Boolean(rec?.refunds?.some((r: any) => r.status === "COMPLETED")) || Boolean(noteRefund),
+    merchant_offered_resolution:
+      Boolean(rec?.supportThread?.some((m: any) => m.from === "merchant" && /refund|return|exchange/i.test(m.text))) ||
+      /offered .*(refund|return|exchange)/i.test(attached),
+    listing_discloses_variation: Boolean(rec?.productListing?.disclaimer) || /listing (states|says)|will vary|may vary/i.test(attached),
     avs_cvv_match: Boolean(rec?.device?.avsMatch),
     prior_undisputed_orders: priorMatch ? Number(priorMatch[1]) : 0,
-    is_separate_transaction: notes.some((n) => /separate orders/i.test(n)),
+    is_separate_transaction: /separate orders?/i.test(all),
     amount: Number(d.amount.value),
   };
   const score = await call("score_dispute", facts);
   const verdict: Verdict = score.suggestedVerdict;
 
-  const trackingInfo = facts.has_tracking
+  const trackingInfo = tracking?.tracking_number
     ? { carrier: tracking.carrier, trackingNumber: tracking.tracking_number }
-    : undefined;
-  const refundIds: string[] = rec?.refunds?.map((r: any) => r.refundId) ?? [];
+    : noteTracking
+      ? { carrier: noteTracking[1].toUpperCase(), trackingNumber: noteTracking[2] }
+      : undefined;
+  const refundIds: string[] = [...(rec?.refunds?.map((r: any) => r.refundId) ?? []), ...(noteRefund ? [noteRefund[1]] : [])];
   const offer: string | undefined = score.suggestedOfferAmount;
 
   const evidence = score.factors.map((f: any) => ({
@@ -225,8 +234,9 @@ async function rulesEngine(d: Dispute, emit: Emit): Promise<CaseFile> {
   const responseNote =
     verdict === "FIGHT"
       ? [
-          `Order ${rec?.orderId ?? ""} for "${d.itemDescription ?? "the item"}" was fulfilled as described.`,
-          trackingInfo ? `Shipped via ${trackingInfo.carrier}, tracking ${trackingInfo.trackingNumber}; carrier status: ${tracking.status}.` : "",
+          `Order ${rec?.orderId ?? ""} for "${d.itemDescription ?? "the item"}" was fulfilled as described.`.replace("Order  for", "The order for"),
+          attached && !rec ? `Merchant records: ${attached.slice(0, 600)}` : "",
+          trackingInfo ? `Shipped via ${trackingInfo.carrier}, tracking ${trackingInfo.trackingNumber}${tracking?.status ? `; carrier status: ${tracking.status}` : ""}.` : "",
           tracking?.events?.at(-1)?.detail ? `Final carrier scan: ${tracking.events.at(-1).detail}.` : "",
           refundIds.length ? `A full refund was already issued (refund ID ${refundIds.join(", ")}).` : "",
           facts.is_separate_transaction ? `The second charge belongs to a separate order: ${notes.find((n) => /separate/i.test(n))}.` : "",
